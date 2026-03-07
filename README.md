@@ -119,6 +119,12 @@ wizard.*      ← 向导状态
 
 右上角显示的版本号（如 `v2026.3.2`）来自 `meta.lastTouchedVersion`，由 OpenClaw 自身维护，本工具只读取展示，不会修改。
 
+### 配置生效与重启
+
+**通常无需重启**：OpenClaw Gateway 会自动监视 `openclaw.json` 的变化。每次你通过本工具应用配置（更新了 `primary` 等字段），OpenClaw 都能**热重载并立即生效**。
+
+> *注：只有在切换到之前**从未配置过的新 Provider** 时，OpenClaw 可能需要一点时间初始化新连接。如果发现新模型没有立即生效，可在 OpenClaw Web 控制台确认，或手动重启一次 OpenClaw 进程。*
+
 ---
 
 ## 使用示例
