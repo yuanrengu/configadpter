@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpenClaw 大模型切换器</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #21262d;
+    --border: #30363d;
+    --accent: #58a6ff;
+    --accent2: #7c3aed;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Layout */
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+  header {
+    background: linear-gradient(135deg, #1a1f2e 0%, #0d1117 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    backdrop-filter: blur(20px);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-size: 28px; }
+  header h1 { font-size: 20px; font-weight: 700; background: linear-gradient(90deg, var(--accent), #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  header .version { font-size: 12px; color: var(--muted); margin-left: auto; }
+
+  main { flex: 1; max-width: 1200px; margin: 0 auto; padding: 28px 24px; width: 100%; }
+
+  /* Status card */
+  .status-card {
+    background: linear-gradient(135deg, #1c2333 0%, #161b22 100%);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .status-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:.5; } }
+  .status-info { flex: 1; }
+  .status-info .label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .status-info .value { font-size: 16px; font-weight: 600; color: var(--text); }
+  .status-info .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .status-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(56,161,105,.15);
+    border: 1px solid rgba(56,161,105,.3);
+    color: var(--green);
+  }
+
+  /* Section */
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    margin-bottom: 14px;
+  }
+
+  /* Provider grid */
+  .provider-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .provider-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 12px;
+    text-align: center;
+    cursor: pointer;
+    transition: all .2s ease;
+    user-select: none;
+  }
+  .provider-card:hover { border-color: var(--accent); background: var(--surface2); transform: translateY(-2px); }
+  .provider-card.active { border-color: var(--accent); background: rgba(88,166,255,.08); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .provider-card.current { border-color: var(--green); background: rgba(63,185,80,.08); }
+  .provider-card .icon { font-size: 28px; margin-bottom: 8px; }
+  .provider-card .name { font-size: 12px; font-weight: 600; color: var(--text); }
+  .provider-card .badge { font-size: 10px; color: var(--green); margin-top: 4px; }
+
+  /* Config form */
+  .config-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-bottom: 24px;
+    display: none;
+  }
+  .config-panel.visible { display: block; }
+
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .form-row.single { grid-template-columns: 1fr; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; font-weight: 600; color: var(--muted); }
+  .form-group input, .form-group select {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 10px 14px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color .2s;
+    width: 100%;
+  }
+  .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+  .form-group input::placeholder { color: var(--muted); }
+  .form-group .hint { font-size: 11px; color: var(--muted); }
+  .eye-wrap { position: relative; }
+  .eye-wrap input { padding-right: 40px; }
+  .eye-btn {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: var(--muted); font-size: 16px; padding: 0;
+  }
+  .eye-btn:hover { color: var(--text); }
+
+  /* Model list */
+  .model-section { margin-top: 20px; }
+  .model-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .model-list { display: flex; flex-direction: column; gap: 8px; }
+  .model-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .model-item:hover { border-color: #888; }
+  .model-item.selected { border-color: var(--accent); background: rgba(88,166,255,.06); }
+  .model-item .model-name { font-size: 14px; font-weight: 500; flex: 1; }
+  .model-item .model-id { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .model-item .model-ctx { font-size: 11px; color: var(--muted); }
+  .model-item .model-tag {
+    padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    background: rgba(124,58,237,.2); border: 1px solid rgba(124,58,237,.3); color: #a78bfa;
+  }
+  .model-item .del-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 16px; padding: 0 4px; line-height: 1;
+    opacity: 0; transition: opacity .15s;
+  }
+  .model-item:hover .del-btn { opacity: 1; }
+  .del-btn:hover { color: var(--red) !important; }
+
+  /* Add custom model */
+  .add-model-row {
+    display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; margin-top: 10px;
+  }
+  .add-model-row input {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); padding: 8px 12px;
+    font-size: 13px; outline: none; transition: border-color .2s;
+  }
+  .add-model-row input:focus { border-color: var(--accent); }
+
+  /* Buttons */
+  .btn {
+    border: none; cursor: pointer; border-radius: 8px;
+    font-size: 14px; font-weight: 600; padding: 10px 20px;
+    transition: all .2s; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #79b8ff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(88,166,255,.3); }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-danger { background: rgba(248,81,73,.1); color: var(--red); border: 1px solid rgba(248,81,73,.2); }
+  .btn-danger:hover { background: rgba(248,81,73,.2); }
+  .btn-sm { padding: 6px 14px; font-size: 12px; border-radius: 6px; }
+  .btn-icon { padding: 7px 10px; font-size: 16px; }
+
+  .apply-row { display: flex; gap: 12px; align-items: center; margin-top: 24px; flex-wrap: wrap; }
+
+  /* Toast */
+  #toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 22px;
+    font-size: 14px; font-weight: 500;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    transition: transform .3s ease, opacity .3s ease;
+    opacity: 0; z-index: 999; max-width: 400px; text-align: center;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+  #toast.success { border-color: var(--green); color: var(--green); }
+  #toast.error { border-color: var(--red); color: var(--red); }
+  #toast.info { border-color: var(--accent); color: var(--accent); }
+
+  /* Preview */
+  .preview-box {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-family: monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 12px;
+    max-height: 200px;
+    overflow: auto;
+    display: none;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .preview-box.visible { display: block; }
+
+  /* Divider */
+  .divider { border: none; border-top: 1px solid var(--border); margin: 24px 0; }
+
+  /* Spinner */
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <span class="logo">🦞</span>
+    <h1>OpenClaw 大模型切换器</h1>
+    <span class="version" id="ver">加载中...</span>
+  </header>
+
+  <main>
+    <!-- Current Status -->
+    <div id="statusCard" class="status-card">
+      <div class="status-dot"></div>
+      <div class="status-info">
+        <div class="label">当前模型</div>
+        <div class="value" id="currentModel">加载中...</div>
+        <div class="sub" id="currentBase">--</div>
+      </div>
+      <div class="status-badge" id="statusBadge">运行中</div>
+    </div>
+
+    <!-- Provider Selection -->
+    <div class="section-title">选择 Provider</div>
+    <div class="provider-grid" id="providerGrid">
+      <!-- cards injected by JS -->
+    </div>
+
+    <!-- Config Panel -->
+    <div class="config-panel" id="configPanel">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Base URL</label>
+          <input type="text" id="baseUrl" placeholder="https://api.example.com/v1">
+        </div>
+        <div class="form-group">
+          <label>API Key</label>
+          <div class="eye-wrap">
+            <input type="password" id="apiKey" placeholder="sk-...">
+            <button class="eye-btn" onclick="toggleEye()" title="显示/隐藏">👁</button>
+          </div>
+          <span class="hint">留空则不修改已有的 API Key</span>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>API 格式</label>
+          <select id="apiType">
+            <option value="openai-completions">OpenAI Chat Completions</option>
+            <option value="anthropic-messages">Anthropic Messages</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Auth Header 模式</label>
+          <select id="authHeader">
+            <option value="false">标准 (Authorization: Bearer)</option>
+            <option value="true">自定义 Header</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Model List -->
+      <div class="model-section">
+        <div class="model-section-header">
+          <span class="section-title" style="margin:0">选择模型</span>
+        </div>
+        <div class="model-list" id="modelList">
+          <!-- injected by JS -->
+        </div>
+        <div class="add-model-row" id="addModelRow">
+          <input type="text" id="addModelId" placeholder="模型 ID (如 gpt-4o)">
+          <input type="text" id="addModelName" placeholder="显示名称 (如 GPT-4o)">
+          <button class="btn btn-secondary btn-sm" onclick="addCustomModel()">添加</button>
+        </div>
+      </div>
+
+      <hr class="divider">
+
+      <!-- Preview & Apply -->
+      <div class="apply-row">
+        <button class="btn btn-primary" id="applyBtn" onclick="applyConfig()">
+          ✅ 应用配置
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="togglePreview()">
+          预览 JSON
+        </button>
+        <span style="font-size:12px; color:var(--muted)">应用前会自动备份当前配置</span>
+      </div>
+      <div class="preview-box" id="previewBox"></div>
+    </div>
+  </main>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── State ─────────────────────────────────────────────────────────────────
+let currentConfig = null;
+let selectedProvider = null;
+let selectedModelId = null;
+let providers = {};
+
+// ─── Boot ──────────────────────────────────────────────────────────────────
+async function init() {
+  try {
+    const [cfgRes, provRes] = await Promise.all([
+      fetch('/api/config'),
+      fetch('/api/providers')
+    ]);
+    currentConfig = await cfgRes.json();
+    providers = await provRes.json();
+    renderStatus();
+    renderProviders();
+  } catch(e) {
+    toast('加载配置失败: ' + e.message, 'error');
+  }
+}
+
+// ─── Status ────────────────────────────────────────────────────────────────
+function renderStatus() {
+  const primary = currentConfig?.agents?.defaults?.model?.primary || '未配置';
+  const [prov, model] = primary.split('/');
+  document.getElementById('currentModel').textContent = primary;
+  const provConf = currentConfig?.models?.providers?.[prov];
+  document.getElementById('currentBase').textContent = provConf?.baseUrl || '--';
+  document.getElementById('ver').textContent = 'v' + (currentConfig?.meta?.lastTouchedVersion || '?');
+}
+
+// ─── Providers ─────────────────────────────────────────────────────────────
+function renderProviders() {
+  const grid = document.getElementById('providerGrid');
+  grid.innerHTML = '';
+  const currentPrimary = currentConfig?.agents?.defaults?.model?.primary || '';
+  const currentProvName = currentPrimary.split('/')[0];
+
+  Object.entries(providers).forEach(([key, p]) => {
+    const isCurrent = key === currentProvName;
+    const card = document.createElement('div');
+    card.className = 'provider-card' + (isCurrent ? ' current' : '');
+    card.dataset.key = key;
+    card.innerHTML = `
+      <div class="icon">${p.icon}</div>
+      <div class="name">${p.label}</div>
+      ${isCurrent ? '<div class="badge">✓ 当前</div>' : ''}
+    `;
+    card.onclick = () => selectProvider(key);
+    grid.appendChild(card);
+  });
+}
+
+function selectProvider(key) {
+  selectedProvider = key;
+  selectedModelId = null;
+
+  // Update cards
+  document.querySelectorAll('.provider-card').forEach(c => {
+    c.classList.toggle('active', c.dataset.key === key);
+  });
+
+  const p = providers[key];
+  const existingConf = currentConfig?.models?.providers?.[key] || {};
+
+  // Fill form
+  document.getElementById('baseUrl').value = existingConf.baseUrl || p.baseUrl || '';
+  document.getElementById('apiKey').value = '';  // never pre-fill API key
+  document.getElementById('apiType').value = existingConf.api || p.api || 'openai-completions';
+  document.getElementById('authHeader').value = String(existingConf.authHeader ?? p.authHeader ?? false);
+
+  // Merge models: template models + existing custom models
+  const templateModels = p.models || [];
+  const existingModels = existingConf.models || [];
+  // De-duplicate by id, existing takes precedence
+  const merged = [...templateModels];
+  existingModels.forEach(em => {
+    if (!merged.find(m => m.id === em.id)) merged.push(em);
+  });
+
+  renderModelList(merged);
+
+  // Pre-select current model if same provider
+  const currentPrimary = currentConfig?.agents?.defaults?.model?.primary || '';
+  if (currentPrimary.startsWith(key + '/')) {
+    const curModelId = currentPrimary.split('/').slice(1).join('/');
+    selectModel(curModelId);
+  }
+
+  document.getElementById('configPanel').classList.add('visible');
+  document.getElementById('previewBox').classList.remove('visible');
+}
+
+// ─── Models ────────────────────────────────────────────────────────────────
+let currentModels = [];
+
+function renderModelList(models) {
+  currentModels = models;
+  const list = document.getElementById('modelList');
+  list.innerHTML = '';
+  models.forEach(m => {
+    const item = document.createElement('div');
+    item.className = 'model-item' + (selectedModelId === m.id ? ' selected' : '');
+    item.dataset.id = m.id;
+    const ctx = m.contextWindow ? (m.contextWindow >= 1000 ? Math.round(m.contextWindow/1000) + 'K' : m.contextWindow) : '';
+    item.innerHTML = `
+      <div>
+        <div class="model-name">${m.name}</div>
+        <div class="model-id">${m.id}</div>
+      </div>
+      ${ctx ? `<span class="model-ctx">${ctx}</span>` : ''}
+      ${m.reasoning ? '<span class="model-tag">推理</span>' : ''}
+      <button class="del-btn" onclick="deleteModel('${m.id}', event)" title="移除">×</button>
+    `;
+    item.onclick = (e) => { if (!e.target.classList.contains('del-btn')) selectModel(m.id); };
+    list.appendChild(item);
+  });
+}
+
+function selectModel(id) {
+  selectedModelId = id;
+  document.querySelectorAll('.model-item').forEach(el => {
+    el.classList.toggle('selected', el.dataset.id === id);
+  });
+}
+
+function deleteModel(id, e) {
+  e.stopPropagation();
+  currentModels = currentModels.filter(m => m.id !== id);
+  if (selectedModelId === id) selectedModelId = null;
+  renderModelList(currentModels);
+}
+
+function addCustomModel() {
+  const id = document.getElementById('addModelId').value.trim();
+  const name = document.getElementById('addModelName').value.trim() || id;
+  if (!id) { toast('请输入模型 ID', 'error'); return; }
+  if (currentModels.find(m => m.id === id)) { toast('模型已存在', 'error'); return; }
+  const newModel = { id, name, contextWindow: 128000, maxTokens: 8192 };
+  currentModels.push(newModel);
+  renderModelList(currentModels);
+  selectModel(id);
+  document.getElementById('addModelId').value = '';
+  document.getElementById('addModelName').value = '';
+}
+
+// ─── Apply ─────────────────────────────────────────────────────────────────
+function buildPayload() {
+  if (!selectedProvider) throw new Error('请先选择 Provider');
+  if (!selectedModelId) throw new Error('请选择一个模型');
+
+  const baseUrl = document.getElementById('baseUrl').value.trim();
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const apiType = document.getElementById('apiType').value;
+  const authHeaderVal = document.getElementById('authHeader').value === 'true';
+
+  if (!baseUrl) throw new Error('请填写 Base URL');
+
+  return {
+    provider: selectedProvider,
+    modelId: selectedModelId,
+    baseUrl,
+    apiKey: apiKey || null,   // null = don't change
+    api: apiType,
+    authHeader: authHeaderVal,
+    models: currentModels,
+  };
+}
+
+async function applyConfig() {
+  let payload;
+  try { payload = buildPayload(); } catch(e) { toast(e.message, 'error'); return; }
+
+  const btn = document.getElementById('applyBtn');
+  btn.innerHTML = '<span class="spinner"></span> 应用中...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/switch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || '未知错误');
+    toast('✅ 配置已应用！当前模型: ' + data.primary, 'success');
+    currentConfig = data.config;
+    renderStatus();
+    renderProviders();
+  } catch(e) {
+    toast('❌ 应用失败: ' + e.message, 'error');
+  } finally {
+    btn.innerHTML = '✅ 应用配置';
+    btn.disabled = false;
+  }
+}
+
+// ─── Preview ───────────────────────────────────────────────────────────────
+function togglePreview() {
+  const box = document.getElementById('previewBox');
+  if (box.classList.contains('visible')) {
+    box.classList.remove('visible');
+    return;
+  }
+  try {
+    const payload = buildPayload();
+    box.textContent = JSON.stringify(payload, null, 2);
+    box.classList.add('visible');
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+function toggleEye() {
+  const inp = document.getElementById('apiKey');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+let toastTimer;
+function toast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 3500);
+}
+
+init();
+</script>
+</body>
+</html>
