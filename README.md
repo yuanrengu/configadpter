@@ -77,13 +77,15 @@ lsof -ti :7890 | xargs kill -9
 
 | Provider | Base URL | Notes |
 |----------|----------|-------|
-| 🌙 Moonshot (Kimi) | `api.moonshot.cn` | Available in China, kimi-k2.5 etc. |
-| 🔵 DeepSeek | `api.deepseek.com` | Cost-effective, available in China |
-| 🤖 OpenAI | `api.openai.com` | GPT-4o, o1, o3-mini |
-| 🧠 Anthropic | `api.anthropic.com` | Claude Opus / Sonnet / Haiku |
+| 🌙 Moonshot (Kimi) | `api.moonshot.cn` | Available in China, kimi-k2.5 / kimi-latest |
+| 🔵 DeepSeek | `api.deepseek.com` | Cost-effective; V3 + R1 reasoning |
+| 🤖 OpenAI | `api.openai.com` | GPT-4o, o1, o3, o3-mini |
+| 🧠 Anthropic | `api.anthropic.com` | Claude Opus 4.6 / Sonnet 4.6 (latest) |
+| ✨ Google Gemini | `generativelanguage.googleapis.com` | Gemini 2.5 Pro / Flash |
 | 🔀 OpenRouter | `openrouter.ai/api` | Multi-model aggregation proxy |
-| ⚡ SiliconFlow | `api.siliconflow.cn` | Accelerated model hosting |
-| 🇨🇳 ZhipuAI | `open.bigmodel.cn` | GLM-4 series |
+| 🚀 Groq | `api.groq.com` | Ultra-fast inference (Llama, DeepSeek, etc.) |
+| 🌊 SiliconFlow | `api.siliconflow.cn` | Qwen3, DeepSeek, QwQ — CN-hosted |
+| 🇨🇳 ZhipuAI | `open.bigmodel.cn` | GLM-4 series, GLM Z1 reasoning |
 | 🦙 Ollama | `localhost:11434` | Locally hosted offline models |
 | ⚙️ Custom | Any URL | Any OpenAI-compatible API |
 

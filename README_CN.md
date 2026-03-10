@@ -45,8 +45,8 @@
 
 ```bash
 # 克隆项目
-git clone https://github.com/<your-username>/openclaw-model-switcher.git
-cd openclaw-model-switcher
+git clone https://github.com/yuanrengu/configadpter.git
+cd configadpter
 
 # 启动工具（零依赖，直接运行）
 python3 openclaw_config.py
@@ -81,13 +81,15 @@ lsof -ti :7890 | xargs kill -9
 
 | Provider | Base URL | 说明 |
 |----------|----------|------|
-| 🌙 Moonshot (Kimi) | `api.moonshot.cn` | 国内可用，kimi-k2.5 等 |
-| 🔵 DeepSeek | `api.deepseek.com` | 高性价比，国内可用 |
-| 🤖 OpenAI | `api.openai.com` | GPT-4o, o1, o3-mini |
-| 🧠 Anthropic | `api.anthropic.com` | Claude Opus/Sonnet/Haiku |
+| 🌙 Moonshot (Kimi) | `api.moonshot.cn` | 国内可用，kimi-k2.5 / kimi-latest |
+| 🔵 DeepSeek | `api.deepseek.com` | 高性价比，V3 + R1 推理模型 |
+| 🤖 OpenAI | `api.openai.com` | GPT-4o, o1, o3, o3-mini |
+| 🧠 Anthropic | `api.anthropic.com` | Claude Opus 4.6 / Sonnet 4.6（最新）|
+| ✨ Google Gemini | `generativelanguage.googleapis.com` | Gemini 2.5 Pro / Flash |
 | 🔀 OpenRouter | `openrouter.ai/api` | 多模型聚合路由 |
-| ⚡ SiliconFlow | `api.siliconflow.cn` | 国内多模型加速平台 |
-| 🇨🇳 ZhipuAI | `open.bigmodel.cn` | GLM-4 系列 |
+| 🚀 Groq | `api.groq.com` | 超高速推理（Llama、DeepSeek 等）|
+| 🌊 SiliconFlow | `api.siliconflow.cn` | Qwen3、DeepSeek、QwQ，国内可用 |
+| 🇨🇳 ZhipuAI | `open.bigmodel.cn` | GLM-4 系列，GLM Z1 推理模型 |
 | 🦙 Ollama | `localhost:11434` | 本地离线运行的模型 |
 | ⚙️ 自定义 | 任意 URL | 任意 OpenAI 兼容接口 |
 
