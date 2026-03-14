@@ -299,7 +299,7 @@
           <label>API Key</label>
           <div class="eye-wrap">
             <input type="password" id="apiKey" placeholder="sk-...">
-            <button class="eye-btn" onclick="toggleEye()" title="显示/隐藏">👁</button>
+            <button class="eye-btn" id="toggleEyeBtn" type="button" title="显示/隐藏">👁</button>
           </div>
           <span class="hint">留空则不修改已有的 API Key</span>
         </div>
@@ -332,7 +332,7 @@
         <div class="add-model-row" id="addModelRow">
           <input type="text" id="addModelId" placeholder="模型 ID (如 gpt-4o)">
           <input type="text" id="addModelName" placeholder="显示名称 (如 GPT-4o)">
-          <button class="btn btn-secondary btn-sm" onclick="addCustomModel()">添加</button>
+          <button class="btn btn-secondary btn-sm" id="addModelBtn" type="button">添加</button>
         </div>
       </div>
 
@@ -340,10 +340,10 @@
 
       <!-- Preview & Apply -->
       <div class="apply-row">
-        <button class="btn btn-primary" id="applyBtn" onclick="applyConfig()">
+        <button class="btn btn-primary" id="applyBtn" type="button">
           ✅ 应用配置
         </button>
-        <button class="btn btn-secondary btn-sm" onclick="togglePreview()">
+        <button class="btn btn-secondary btn-sm" id="previewBtn" type="button">
           预览 JSON
         </button>
         <span style="font-size:12px; color:var(--muted)">应用前会自动备份当前配置</span>
@@ -365,6 +365,7 @@ let providers = {};
 // ─── Boot ──────────────────────────────────────────────────────────────────
 async function init() {
   try {
+    bindUiEvents();
     const [cfgRes, provRes] = await Promise.all([
       fetch('/api/config'),
       fetch('/api/providers')
@@ -376,6 +377,18 @@ async function init() {
   } catch(e) {
     toast('加载配置失败: ' + e.message, 'error');
   }
+}
+
+// ─── UI Events ──────────────────────────────────────────────────────────────
+let uiEventsBound = false;
+function bindUiEvents() {
+  if (uiEventsBound) return;
+  uiEventsBound = true;
+
+  document.getElementById('toggleEyeBtn').addEventListener('click', toggleEye);
+  document.getElementById('addModelBtn').addEventListener('click', addCustomModel);
+  document.getElementById('applyBtn').addEventListener('click', applyConfig);
+  document.getElementById('previewBtn').addEventListener('click', togglePreview);
 }
 
 // ─── Status ────────────────────────────────────────────────────────────────
@@ -391,7 +404,7 @@ function renderStatus() {
 // ─── Providers ─────────────────────────────────────────────────────────────
 function renderProviders() {
   const grid = document.getElementById('providerGrid');
-  grid.innerHTML = '';
+  while (grid.firstChild) grid.removeChild(grid.firstChild);
   const currentPrimary = currentConfig?.agents?.defaults?.model?.primary || '';
   const currentProvName = currentPrimary.split('/')[0];
 
@@ -400,11 +413,22 @@ function renderProviders() {
     const card = document.createElement('div');
     card.className = 'provider-card' + (isCurrent ? ' current' : '');
     card.dataset.key = key;
-    card.innerHTML = `
-      <div class="icon">${p.icon}</div>
-      <div class="name">${p.label}</div>
-      ${isCurrent ? '<div class="badge">✓ 当前</div>' : ''}
-    `;
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    icon.textContent = String(p.icon ?? '');
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = String(p.label ?? key);
+
+    card.appendChild(icon);
+    card.appendChild(name);
+    if (isCurrent) {
+      const badge = document.createElement('div');
+      badge.className = 'badge';
+      badge.textContent = '✓ 当前';
+      card.appendChild(badge);
+    }
     card.onclick = () => selectProvider(key);
     grid.appendChild(card);
   });
@@ -456,22 +480,45 @@ let currentModels = [];
 function renderModelList(models) {
   currentModels = models;
   const list = document.getElementById('modelList');
-  list.innerHTML = '';
+  while (list.firstChild) list.removeChild(list.firstChild);
   models.forEach(m => {
     const item = document.createElement('div');
     item.className = 'model-item' + (selectedModelId === m.id ? ' selected' : '');
     item.dataset.id = m.id;
     const ctx = m.contextWindow ? (m.contextWindow >= 1000 ? Math.round(m.contextWindow/1000) + 'K' : m.contextWindow) : '';
-    item.innerHTML = `
-      <div>
-        <div class="model-name">${m.name}</div>
-        <div class="model-id">${m.id}</div>
-      </div>
-      ${ctx ? `<span class="model-ctx">${ctx}</span>` : ''}
-      ${m.reasoning ? '<span class="model-tag">推理</span>' : ''}
-      <button class="del-btn" onclick="deleteModel('${m.id}', event)" title="移除">×</button>
-    `;
-    item.onclick = (e) => { if (!e.target.classList.contains('del-btn')) selectModel(m.id); };
+    const textWrap = document.createElement('div');
+    const modelName = document.createElement('div');
+    modelName.className = 'model-name';
+    modelName.textContent = String(m.name ?? m.id);
+    const modelId = document.createElement('div');
+    modelId.className = 'model-id';
+    modelId.textContent = String(m.id ?? '');
+    textWrap.appendChild(modelName);
+    textWrap.appendChild(modelId);
+    item.appendChild(textWrap);
+
+    if (ctx) {
+      const ctxEl = document.createElement('span');
+      ctxEl.className = 'model-ctx';
+      ctxEl.textContent = String(ctx);
+      item.appendChild(ctxEl);
+    }
+    if (m.reasoning) {
+      const tag = document.createElement('span');
+      tag.className = 'model-tag';
+      tag.textContent = '推理';
+      item.appendChild(tag);
+    }
+
+    const del = document.createElement('button');
+    del.className = 'del-btn';
+    del.type = 'button';
+    del.title = '移除';
+    del.textContent = '×';
+    del.addEventListener('click', (e) => deleteModel(String(m.id ?? ''), e));
+    item.appendChild(del);
+
+    item.onclick = (e) => { if (!(e.target instanceof HTMLElement) || !e.target.classList.contains('del-btn')) selectModel(m.id); };
     list.appendChild(item);
   });
 }
@@ -522,6 +569,7 @@ function buildPayload() {
     apiKey: apiKey || null,   // null = don't change
     api: apiType,
     authHeader: authHeaderVal,
+    auth: providers?.[selectedProvider]?.auth || 'api-key',
     models: currentModels,
   };
 }

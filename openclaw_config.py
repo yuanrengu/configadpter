@@ -223,21 +223,77 @@ def write_config(cfg: dict):
         bak = CONFIG_PATH.parent / f"openclaw.json.bak.tool.{ts}"
         shutil.copy2(CONFIG_PATH, bak)
         print(f"[backup] {bak}")
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+    # 原子写：先写临时文件，再 replace，避免崩溃导致半写入 JSON
+    tmp = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, CONFIG_PATH)
     print(f"[write ] {CONFIG_PATH}")
+
+def redact_config(cfg):
+    """脱敏返回给前端的配置（不包含任何 API key）。"""
+    if isinstance(cfg, dict):
+        out = {}
+        for k, v in cfg.items():
+            if k == "apiKey":
+                continue
+            out[k] = redact_config(v)
+        return out
+    if isinstance(cfg, list):
+        return [redact_config(x) for x in cfg]
+    return cfg
+
+
+def is_same_origin_request(handler: BaseHTTPRequestHandler) -> bool:
+    """仅允许同源页面发起写操作，降低 localhost CSRF 风险。
+    同源 fetch 通常带 Origin；命令行/脚本可能不带 Origin，这里也允许。
+    """
+    origin = handler.headers.get("Origin")
+    if not origin:
+        return True
+    allowed = {f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"}
+    return origin in allowed
+
+
+def validate_switch_payload(payload: dict):
+    if not isinstance(payload, dict):
+        raise ValueError("payload must be an object")
+    for key in ("provider", "modelId", "baseUrl"):
+        if key not in payload:
+            raise ValueError(f"missing field: {key}")
+    provider = payload["provider"]
+    if not isinstance(provider, str) or not provider.strip():
+        raise ValueError("provider must be a non-empty string")
+    model_id = payload["modelId"]
+    if not isinstance(model_id, str) or not model_id.strip():
+        raise ValueError("modelId must be a non-empty string")
+    base_url = payload["baseUrl"]
+    if not isinstance(base_url, str) or not base_url.strip():
+        raise ValueError("baseUrl must be a non-empty string")
+
+    parsed = urlparse(base_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise ValueError("baseUrl must be a valid http(s) URL")
+
+    # Provider 允许内置模板或 custom；其他一律拒绝，避免随意污染配置结构
+    if provider not in PROVIDERS:
+        raise ValueError(f"unsupported provider: {provider}")
 
 
 def apply_switch(payload: dict) -> dict:
     """根据前端 payload 更新配置，返回新配置"""
     cfg = read_config()
 
-    provider = payload["provider"]
-    model_id = payload["modelId"]
-    base_url = payload["baseUrl"]
+    validate_switch_payload(payload)
+    provider = payload["provider"].strip()
+    model_id = payload["modelId"].strip()
+    base_url = payload["baseUrl"].strip()
     api_key = payload.get("apiKey")     # None 表示不更改
     api_type = payload.get("api", "openai-completions")
     auth_header = payload.get("authHeader", False)
+    desired_auth = payload.get("auth")  # "api-key" | "none" (由前端根据 provider 模板传入)
     models = payload.get("models", [])
 
     # ── models.providers ──
@@ -248,9 +304,14 @@ def apply_switch(payload: dict) -> dict:
     existing_prov = cfg["models"]["providers"].get(provider, {})
 
     # 构建新 provider 配置
+    # auth 选择：优先使用前端传入的模板值；若用户提供了 apiKey，则强制 api-key
+    auth_mode = desired_auth if desired_auth in ("api-key", "none") else existing_prov.get("auth") or PROVIDERS.get(provider, {}).get("auth") or "api-key"
+    if api_key:
+        auth_mode = "api-key"
+
     new_prov = {
         "baseUrl": base_url,
-        "auth": "api-key" if api_type != "none" else "none",
+        "auth": auth_mode,
         "api": api_type,
         "authHeader": auth_header,
         "models": [
@@ -276,11 +337,13 @@ def apply_switch(payload: dict) -> dict:
     cfg["models"]["providers"][provider] = new_prov
 
     # ── auth.profiles ──
-    cfg.setdefault("auth", {}).setdefault("profiles", {})
-    cfg["auth"]["profiles"][f"{provider}:default"] = {
-        "provider": provider,
-        "mode": "api_key",
-    }
+    # 仅在需要 api-key 的 provider 上写入 profile；避免把 auth=none 的 provider 强行写成 api_key
+    if auth_mode != "none":
+        cfg.setdefault("auth", {}).setdefault("profiles", {})
+        cfg["auth"]["profiles"][f"{provider}:default"] = {
+            "provider": provider,
+            "mode": "api_key",
+        }
 
     # ── agents.defaults.model ──
     primary = f"{provider}/{model_id}"
@@ -312,7 +375,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
 
@@ -326,9 +388,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        # 不启用跨站 CORS：避免任意网页读写 localhost 配置
         self.end_headers()
 
     def do_GET(self):
@@ -337,7 +397,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(read_html())
         elif path == "/api/config":
             try:
-                self.send_json(read_config())
+                self.send_json(redact_config(read_config()))
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
         elif path == "/api/providers":
@@ -358,12 +418,20 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/switch":
             try:
+                if not is_same_origin_request(self):
+                    self.send_json({"error": "forbidden"}, 403)
+                    return
                 cfg, primary = apply_switch(payload)
-                self.send_json({"ok": True, "primary": primary, "config": cfg})
+                self.send_json({"ok": True, "primary": primary, "config": redact_config(cfg)})
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                self.send_json({"error": str(e)}, 500)
+                msg = str(e) or "error"
+                # 基本输入问题返回 400，避免前端看到 500
+                if isinstance(e, ValueError):
+                    self.send_json({"error": msg}, 400)
+                else:
+                    self.send_json({"error": msg}, 500)
         else:
             self.send_response(404)
             self.end_headers()
